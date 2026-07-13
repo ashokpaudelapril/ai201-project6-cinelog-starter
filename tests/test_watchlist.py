@@ -7,7 +7,7 @@ structure of tests/test_collection.py (see Comment 3 in the PR review).
 
 import pytest
 from app import create_app, db
-from models import User
+from models import User, Film
 from services.watchlist_service import add_to_watchlist
 from services.collection_service import FilmNotFoundError
 
@@ -36,6 +36,16 @@ def sample_user(app):
         return user.id
 
 
+@pytest.fixture
+def sample_film(app):
+    """A film to use in tests."""
+    with app.app_context():
+        film = Film(title="Paddington 2", year=2017, genre="Comedy")
+        db.session.add(film)
+        db.session.commit()
+        return film.id
+
+
 # ── Nonexistent film ─────────────────────────────────────────────────────────
 
 def test_add_to_watchlist_nonexistent_film_raises(app, sample_user):
@@ -51,3 +61,27 @@ def test_add_to_watchlist_nonexistent_film_raises(app, sample_user):
 
         with pytest.raises(FilmNotFoundError):
             add_to_watchlist(user_id=sample_user, film_id=fake_film_id)
+
+
+# ── Default visibility (Comment 4 / visibility toggle) ───────────────────────
+
+def test_add_to_watchlist_defaults_to_private(app, sample_user, sample_film):
+    """
+    A watchlist entry should be private by default: callers must opt in to
+    sharing rather than having it public unless they say otherwise.
+    """
+    with app.app_context():
+        entry = add_to_watchlist(user_id=sample_user, film_id=sample_film)
+        assert entry.public is False
+
+
+def test_add_to_watchlist_respects_public_flag(app, sample_user, sample_film):
+    """
+    Passing public=True should create a publicly visible entry, so the opt-in
+    toggle actually takes effect.
+    """
+    with app.app_context():
+        entry = add_to_watchlist(
+            user_id=sample_user, film_id=sample_film, public=True
+        )
+        assert entry.public is True

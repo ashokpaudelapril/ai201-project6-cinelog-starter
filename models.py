@@ -81,7 +81,8 @@ class WatchlistEntry(db.Model):
     # refactor that migrated film IDs from integer to UUID.
     film_id = db.Column(db.String(36), db.ForeignKey("film.id"), nullable=False)
     date_added = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    public = db.Column(db.Boolean, default=True)
+    # Private by default — users opt in to sharing explicitly (see Comment 4).
+    public = db.Column(db.Boolean, default=False)
 
     def to_dict(self):
         return {
