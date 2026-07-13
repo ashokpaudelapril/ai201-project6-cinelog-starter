@@ -144,6 +144,25 @@ two tests in `tests/test_watchlist.py`:
 
 ---
 
+## Follow-up: Automated Review (Copilot)
+
+After opening the PR, GitHub Copilot's review flagged three issues beyond the six human
+comments. All three were valid and are addressed:
+
+1. **`WatchlistEntry` had no `film`/`user` relationship** — `get_watchlist()` calls
+   `entry.film`, so `GET /watchlist/<user_id>` crashed with `AttributeError` (my tests missed
+   it because none exercised `get_watchlist()`). Added `watchlist_entries` relationships on
+   `User` and `Film` (mirroring `CollectionEntry`), plus a `UniqueConstraint(user_id, film_id)`
+   for DB-level dedup safety under concurrency. Verified `GET /watchlist` now returns 200.
+2. **Route returned 500 for invalid requests** — the endpoint didn't catch `FilmNotFoundError`
+   or `AlreadyInWatchlistError`. Added the same `try/except` the collection route uses, so a
+   nonexistent film returns 404 and a duplicate returns 409.
+3. **Missing test coverage** — added `test_add_to_watchlist_duplicate_raises` and
+   `test_get_watchlist_returns_newest_first` (mirroring `test_collection.py`). The sort test
+   also guards against a regression of issue #1. Suite is now 9 passing tests.
+
+---
+
 ## Git Log Screenshot
 
 `git log --oneline` on `feature/watchlist` after the interactive rebase — 8 conventional
