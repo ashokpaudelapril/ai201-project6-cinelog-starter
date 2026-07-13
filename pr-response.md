@@ -1,22 +1,23 @@
 # PR Response Doc — CineLog Watchlist Feature
 
 ## AI Usage
-<!-- Review and edit this to match your own honest account. -->
-I used AI tools (Claude Code) in the following ways during this project:
+I used AI (Claude Code) heavily on this project, and I want to be honest about how:
 
-- **Codebase orientation:** summarizing what `models.py`, `services/collection_service.py`,
-  and `tests/test_collection.py` do, and how `add_to_collection()` handles film lookup and
-  deduplication — so I understood the existing patterns before touching the watchlist code.
-- **Implementation support:** applying the rename, mirroring the collection deduplication
-  pattern into `add_to_watchlist()`, and writing the watchlist test in the same fixture
-  style as the collection tests. I verified every change by running `pytest`.
-- **Rebase guidance:** working through the UUID rebase conflict step by step (see Comment 6).
-- **Stress-testing my design arguments (Comments 4 & 5):** after I decided my positions,
-  I asked the AI what counterarguments a reviewer might raise. The *decisions* — private-by-default
-  visibility and date-added sort order — are my own, grounded in how CineLog's collection and
-  watchlist differ. Where the AI surfaced a counterpoint I hadn't addressed (e.g. that
-  private-by-default weakens the community discovery the app is built around), I folded the
-  tradeoff into my written response rather than letting the argument stay one-sided.
+- **Getting the overall picture:** understanding the existing codebase — what the collection
+  service, models, and tests did — before I started, so the review comments made sense.
+- **Writing code:** AI wrote the actual changes as I directed each step — the rename, the
+  deduplication (mirroring `add_to_collection`), the visibility parameter, and the tests.
+- **The rebase:** working through the UUID merge conflict onto `main` and cleaning up the
+  commit history into conventional commits.
+- **Drafting this document,** including first drafts of the design arguments below.
+- **The Copilot follow-up fixes:** after I opened the PR, AI helped diagnose and fix the
+  `get_watchlist()` crash, the route error handling, and the extra tests.
+
+For the two design decisions (Comments 4 and 5), the positions and the underlying reasons are
+my own — private-by-default because of how I feel about my own privacy, and newest-first
+because of how I actually use a watchlist (I rewatch films I love until they wear out, so I
+want fresh additions on top). AI helped me phrase and stress-test those arguments, but the
+calls and the reasons behind them are mine.
 
 ---
 
@@ -49,26 +50,20 @@ module imports cleanly and the full suite still passed.
 ## Comment 4 — Default visibility
 **My position:** `WatchlistEntry.public` should default to **`False` (private)**, not `True`.
 
-**Reasoning:** CineLog models two different lists. `CollectionEntry` records films a user has
-*already watched* — and notably it has no `public` field at all. `WatchlistEntry` is the one
-that introduced visibility, and it represents *intent* — films a user is planning to watch.
-Intent is arguably more sensitive than history: a watchlist signals what someone is about to
-do and what they're currently interested in, which can be personal (a run of films tied to a
-health topic, a breakup, a job search). Defaulting that to public means the very first time a
-user saves a film — before they've formed any mental model of CineLog's social features — it's
-silently broadcast. That violates the principle of least surprise. A community product earns
-trust by making sharing an intentional act, so users should have to *opt in* to publishing a
-watchlist rather than opt out.
+**Reasoning:** For me this really comes down to privacy. When I save a film I'm planning to
+watch, that feels personal — it says something about what I'm into right now — and I wouldn't
+want it shown to other people unless I actually chose to share it. A watchlist feels more
+personal to me than a list of things I've already watched, because it's about what I intend to
+do, not just my history. So defaulting it to public felt wrong: it exposes something private
+without the user ever deciding to. The default should protect the user first, and sharing
+should be a choice they make on purpose.
 
-**Tradeoff acknowledged:** CineLog is explicitly a *community* film-tracking app, and
-public-by-default maximizes the shared content that fuels discovery, recommendations, and
-network effects — with zero friction. Private-by-default means far fewer public watchlists,
-because most users never flip a toggle, so the community/discovery surface grows more slowly.
-That's a real cost. I accept it because an accidental privacy exposure is far more damaging to
-a community's trust than slower growth of public content, and the discovery value can be
-recovered with good opt-in UX (a visible "share your watchlist" affordance produces
-*intentionally curated* public lists, which are higher-signal for discovery than lists that
-are public only because nobody changed the default).
+**Tradeoff acknowledged:** CineLog is a community app, so public-by-default would give it more
+shared watchlists to browse and would help people discover films through each other. Going
+private-by-default means fewer public lists and slower community discovery — that's a real
+cost. I still think privacy wins here: I'd rather the app share too little by default than too
+much. And sharing isn't lost — it's still fully possible through the `public` opt-in I added,
+it just becomes something the user turns on intentionally.
 
 **Implementation:** I shipped this rather than leaving it as an argument. Flipping the default
 to `False` on its own would make every watchlist permanently private (nothing could ever be
@@ -81,24 +76,20 @@ section below.
 **My position:** Change `get_watchlist()` to sort by **`date_added` descending (newest first)**,
 matching `get_collection()`. (Implemented.)
 
-**Reasoning:** Two things point the same way. First, recency is the more useful default for a
-watchlist specifically — a watchlist is a queue of intent, and the film a user just added is
-the one most on their mind, so surfacing recent additions supports the core "I just heard about
-this, saved it, what's on my list" loop. Alphabetical order optimizes for a *lookup* task ("is
-X already saved?"), which is secondary and better served by search/filter than by the default
-sort. Second, the previous alphabetical ordering sorted by `Film.title`, so the list was
-organized around film metadata rather than around anything the user actually did.
+**Reasoning:** The main reason for me is how I actually use a watchlist: I want the newest
+things I've added showing up first. When I really like a film I tend to rewatch it a lot — to
+the point where it starts to lose its effect and I get a little tired of it. So the films I
+just added are the ones I'm genuinely excited to watch right now, and those are what I want at
+the top. Alphabetical order buries a film I added yesterday somewhere in the middle just
+because of its title, which isn't how I'd actually reach for the list.
 
-**Engagement with reviewer's point:** The maintainer is right on both counts — consistency with
-`get_collection()` matters, and date-added is the better default. `get_collection()` already
-returns newest-first (`date_added.desc()`), and that behavior is locked by
-`test_get_collection_returns_newest_first`. Having two sibling list views order differently
-(collection newest-first, watchlist A–Z) makes the product feel incoherent. I adopted
-`date_added.desc()` specifically (not ascending) so the two views are *truly* consistent, not
-just "both sorted by date." I considered oldest-first as a "watch these first" queue but
-rejected it to preserve exact consistency with the collection and because newest-first matches
-the moment-of-adding mental model. If lookup later becomes a common need, the right answer is
-an optional sort parameter, not changing this default.
+**Engagement with reviewer's point:** I also agree with the maintainer's consistency argument —
+`get_collection()` already returns newest-first (`date_added.desc()`), and it would feel
+incoherent for the two lists to sort differently. But I'm not only agreeing for consistency's
+sake; newest-first genuinely fits how a watchlist gets used. I matched `date_added.desc()`
+exactly (descending, not ascending) so the watchlist and collection views line up. If someone
+really needs alphabetical for looking a title up, I think that belongs in an optional sort
+later, not as the default.
 
 ## Comment 6 — Rebase
 **What conflicted:** My `feature/watchlist` branch was based on the pre-refactor commit, where
