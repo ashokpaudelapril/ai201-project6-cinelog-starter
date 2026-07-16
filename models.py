@@ -21,6 +21,7 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     collection_entries = db.relationship("CollectionEntry", backref="user", lazy=True)
+    watchlist_entries = db.relationship("WatchlistEntry", backref="user", lazy=True)
 
     def to_dict(self):
         return {"id": self.id, "username": self.username, "email": self.email}
@@ -38,6 +39,7 @@ class Film(db.Model):
     average_rating = db.Column(db.Float, default=0.0)
 
     collection_entries = db.relationship("CollectionEntry", backref="film", lazy=True)
+    watchlist_entries = db.relationship("WatchlistEntry", backref="film", lazy=True)
 
     def to_dict(self):
         return {
@@ -70,4 +72,29 @@ class CollectionEntry(db.Model):
             "film_id": self.film_id,
             "date_added": self.date_added.isoformat(),
             "rating": self.rating,
+        }
+
+
+class WatchlistEntry(db.Model):
+    """Represents a film a user wants to watch (saved for later)."""
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    user_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=False)
+    # film_id is a UUID String(36) — updated from Integer after the main branch
+    # refactor that migrated film IDs from integer to UUID.
+    film_id = db.Column(db.String(36), db.ForeignKey("film.id"), nullable=False)
+    date_added = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    # Private by default — users opt in to sharing explicitly (see Comment 4).
+    public = db.Column(db.Boolean, default=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "film_id", name="unique_user_film_watchlist"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "film_id": self.film_id,
+            "date_added": self.date_added.isoformat(),
+            "public": self.public,
         }
